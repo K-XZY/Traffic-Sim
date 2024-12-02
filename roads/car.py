@@ -10,7 +10,8 @@ class Car():
         self.maxVel = maxVel
         self.maxAcc = maxAcc
         self.prevVel = 0.0
-        self.velocity = 0.0
+        self.velocity = maxVel
+        self.stuckCtr = 0
 
         self.directions = {
             "North": [[-1, 1], [0, 1], [1, 1]],
@@ -30,13 +31,13 @@ class Car():
 
         if(iter == self.velocity):
             return position, direction
-
+        
         percievedPoints = [[position[0] + d[0], position[1] + d[1]] for d in self.directions[direction]]
-        validPoints = [p for p in percievedPoints if self.map[p[1]][p[0]] == 1]
+        validPoints = [p for p in percievedPoints if map[p[1]][p[0]] == 1]
 
         if len(validPoints) == 0:
             return position, direction
-
+        
         chosenPoint = random.choice(validPoints)
         direction = self.updateDirection(position, chosenPoint)
         iter = iter + 1
@@ -67,7 +68,7 @@ class Car():
             return "Northwest"
         
         return "invalid entry"
-
+    
 #############
 # Test code #
 #############
@@ -152,6 +153,7 @@ from serializer import SandboxSerializer
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import os
+from PIL import Image
 
 sb = SandboxSerializer.load_sandbox('circle_data.json',Sandbox)
 grid = np.array(sb.path_map)
@@ -164,21 +166,35 @@ def findOne(grid):
 
 
 i, j = findOne(grid)
-car = Car([i, j], "Southeast", 3, 2)
+car = Car([i, j], "Southeast", 5, 2)
 
-def updateGrid(grid, car: Car):
+def updateGrid(grid, car: Car, stuckThreshold):
 
-    car.pos, car.dir = car.percieve(grid, car.pos, car.dir, iter=0)
+    prevPos = car.pos
 
-    currentGrid = grid
+    pos, dir = car.percieve(grid, car.pos, car.dir, iter=0)
+    car.pos = pos
+    car.dir = dir
+
+    if prevPos == car.pos:
+        car.stuckCtr += 1
+    else:
+        car.stuckCtr = 0
+
+    if car.stuckCtr >= stuckThreshold:
+        car.dir = random.choice(list(car.directions.keys()))
+        car.stuckCtr = 0
+
+    currentGrid = grid.copy()
     currentGrid[car.pos[0], car.pos[1]] = 2
 
-    for dx in range(-3, 4):
-        for dy in range(-3, 4):
+    for dx in range(-10, 11):
+        for dy in range(-10, 11):
             x = car.pos[1] + dx
             y = car.pos[0] + dy
 
-            currentGrid[x, y] = 2
+            #if 0 <= x < grid.shape[1] and 0 <= y < grid.shape[0]:
+            currentGrid[y, x] = 2
 
     return currentGrid
 
@@ -186,12 +202,28 @@ def saveGrid(grid, path):
     
     cmap = ListedColormap(['white', 'black', 'red'])
     plt.imshow(grid, cmap=cmap, interpolation='none')
-    #plt.axis('off')
+    plt.axis('off')
     plt.savefig(path, bbox_inches='tight', pad_inches=0)
-    plt.close
+    plt.close()
 
-for i in range(10):
-    currentGrid = updateGrid(grid, car)
+currentGrid = updateGrid(grid, car, stuckThreshold=3)
+
+imageFolder = 'car_images'
+imageFiles = []
+
+for i in range(100):
+    currentGrid = updateGrid(grid, car, stuckThreshold=3)
     print(car.pos)
     path = os.path.join('car_images', f'grid_image{i}.png')
     saveGrid(currentGrid, path)
+    imageFiles.append(path)
+
+images = [Image.open(image) for image in imageFiles]
+gif_path = os.path.join('car_images', 'car_animation.gif')
+images[0].save(
+    gif_path, 
+    save_all=True, 
+    append_images=images[1:],
+    duration=100,
+    loop=1
+)
