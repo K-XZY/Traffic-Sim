@@ -3,6 +3,7 @@ import numpy as np
 from typing import Dict, List, Any, Union
 from dataclasses import dataclass
 
+
 @dataclass
 class Point:
     """Represents a 2D point with x, y coordinates."""
@@ -54,11 +55,10 @@ class SandboxSerializer:
     def save_sandbox(sandbox: Any, filename: str) -> None:
         """
         Save sandbox data to JSON file.
-        
-        Args:
-            sandbox: Sandbox instance to save
-            filename: Path to save the JSON file
         """
+        # Update path_map before saving
+        sandbox.update_path_map()
+        
         data = {
             # Basic parameters
             'width': sandbox.terrain_generator.width,
@@ -68,6 +68,7 @@ class SandboxSerializer:
             
             # Terrain data
             'terrain': SandboxSerializer.serialize_numpy(sandbox.terrain_generator.terrain),
+            'path_map': SandboxSerializer.serialize_numpy(sandbox.path_map),  # Added this line
             
             # Energy zones
             'energy_zones': [
@@ -95,13 +96,6 @@ class SandboxSerializer:
     def load_sandbox(filename: str, sandbox_class: Any) -> Any:
         """
         Load sandbox data from JSON file.
-        
-        Args:
-            filename: Path to the JSON file
-            sandbox_class: The Sandbox class to instantiate
-            
-        Returns:
-            Instantiated Sandbox with loaded data
         """
         with open(filename, 'r') as f:
             data = json.load(f)
@@ -116,6 +110,13 @@ class SandboxSerializer:
         
         # Set terrain data
         sandbox.terrain_generator.terrain = SandboxSerializer.deserialize_numpy(data['terrain'])
+        
+        # Set path_map if it exists in the saved data
+        if 'path_map' in data:
+            sandbox.path_map = SandboxSerializer.deserialize_numpy(data['path_map'])
+        else:
+            # Regenerate path_map if not in saved data
+            sandbox.update_path_map()
         
         # Add energy zones
         if not hasattr(sandbox.terrain_generator, 'energy_zones'):

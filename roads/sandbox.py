@@ -326,6 +326,115 @@ class Sandbox:
         self.paths: List[List[Point]] = []
         self.network_edges: List[Tuple[Point, Point]] = []
         self.network_adapter = NetworkAdapter()
+        # Initialize path_map with zeros
+        self.path_map = np.zeros((width, height), dtype=float)
+        
+    def update_path_map(self) -> None:
+        """
+        Convert self.paths into a binary path map where 1 indicates road presence.
+        Creates 9-pixel wide roads by extending 4 pixels in each direction.
+        """
+        # Reset path_map to zeros
+        self.path_map.fill(0)
+        
+        def bresenham_line(x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
+            """Implementation of Bresenham's line algorithm for continuous line drawing."""
+            points = []
+            dx = abs(x1 - x0)
+            dy = abs(y1 - y0)
+            x, y = x0, y0
+            sx = 1 if x1 > x0 else -1
+            sy = 1 if y1 > y0 else -1
+            
+            if dx > dy:
+                err = dx / 2
+                while x != x1:
+                    points.append((x, y))
+                    err -= dy
+                    if err < 0:
+                        y += sy
+                        err += dx
+                    x += sx
+            else:
+                err = dy / 2
+                while y != y1:
+                    points.append((x, y))
+                    err -= dx
+                    if err < 0:
+                        x += sx
+                        err += dy
+                    y += sy
+                    
+            points.append((x, y))
+            return points
+
+        # Process each path
+        for path in self.paths:
+            # Process each pair of consecutive points in the path
+            for i in range(len(path) - 1):
+                start = path[i].to_tuple()
+                end = path[i + 1].to_tuple()
+                
+                # Get all points along the line using Bresenham's algorithm
+                line_points = bresenham_line(start[0], start[1], end[0], end[1])
+                
+                # Mark each point and its surrounding points on the path
+                for x, y in line_points:
+                    # Create a 9x9 square around each point
+                    for dx in range(-4, 5):
+                        for dy in range(-4, 5):
+                            new_x = x + dx
+                            new_y = y + dy
+                            if (0 <= new_x < self.path_map.shape[0] and 
+                                0 <= new_y < self.path_map.shape[1]):
+                                self.path_map[new_x, new_y] = 1
+                        
+    def blur_path_map(self, kernel_size: int = 3, keep_weight: float = 0.5) -> np.ndarray:
+        """
+        Apply diffusion blur to the path map.
+        
+        Args:
+            kernel_size: Size of the blur kernel (must be odd)
+            keep_weight: Weight for current pixel value (between 0 and 1)
+        
+        Returns:
+            np.ndarray: Blurred version of path_map
+        """
+        if kernel_size % 2 == 0:
+            raise ValueError("Kernel size must be odd")
+        if not 0 <= keep_weight <= 1:
+            raise ValueError("keep_weight must be between 0 and 1")
+            
+        # Create a copy of the path map
+        blurred = np.copy(self.path_map)
+        
+        # Calculate surrounding weight
+        surround_weight = (1 - keep_weight) / (kernel_size * kernel_size - 1)
+        
+        # Create padding
+        pad_size = kernel_size // 2
+        padded = np.pad(self.path_map, pad_size, mode='constant')
+        
+        # Apply diffusion
+        for i in range(pad_size, padded.shape[0] - pad_size):
+            for j in range(pad_size, padded.shape[1] - pad_size):
+                # Extract neighborhood
+                neighborhood = padded[
+                    i - pad_size:i + pad_size + 1,
+                    j - pad_size:j + pad_size + 1
+                ]
+                
+                # Calculate weighted average
+                center_value = neighborhood[pad_size, pad_size]
+                surround_sum = np.sum(neighborhood) - center_value
+                
+                # Update pixel value
+                blurred[i - pad_size, j - pad_size] = (
+                    center_value * keep_weight +
+                    surround_sum * surround_weight
+                )
+                
+        return blurred
         
     def create_energy_zone(self, x: float, y: float, height: float, radius: float) -> None:
         """Create an energy zone in the terrain."""
