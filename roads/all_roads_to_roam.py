@@ -35,7 +35,7 @@ def generate_and_save_circle():
     sandbox = Sandbox(2000, 2000, alpha=0.3, beta=0.2)
     
     # Add an energy zone at the center
-    sandbox.create_energy_zone(1000, 1000, 1, 1)
+    sandbox.create_energy_zone(1000, 1000, 1000, 800)
     
     # Add network and generate paths
     sandbox.add_network(network)
@@ -54,7 +54,7 @@ def generate_and_save_circle():
     plt.show()
     # Save the sandbox
     logger.info("Saving sandbox to file...")
-    SandboxSerializer.save_sandbox(sandbox, "circle_data.json")
+    SandboxSerializer.save_sandbox(sandbox, "circle_data2.json")
     logger.info("Save completed!")
 
 def generate_and_save_turns():

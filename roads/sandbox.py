@@ -381,13 +381,16 @@ class Sandbox:
                 # Mark each point and its surrounding points on the path
                 for x, y in line_points:
                     # Create a 9x9 square around each point
-                    for dx in range(-4, 5):
-                        for dy in range(-4, 5):
-                            new_x = x + dx
-                            new_y = y + dy
-                            if (0 <= new_x < self.path_map.shape[0] and 
-                                0 <= new_y < self.path_map.shape[1]):
-                                self.path_map[new_x, new_y] = 1
+                    if (0 <= x < self.path_map.shape[0] and 
+                        0 <= y < self.path_map.shape[1]):
+                        self.path_map[x, y] = 1
+                    # for dx in range(-4, 5):
+                    #     for dy in range(-4, 5):
+                    #         new_x = x + dx
+                    #         new_y = y + dy
+                    #         if (0 <= new_x < self.path_map.shape[0] and 
+                    #             0 <= new_y < self.path_map.shape[1]):
+                    #             self.path_map[new_x, new_y] = 1
                         
     def blur_path_map(self, kernel_size: int = 3, keep_weight: float = 0.5) -> np.ndarray:
         """
