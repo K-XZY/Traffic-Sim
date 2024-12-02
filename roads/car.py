@@ -68,10 +68,11 @@ class Car():
         
         return "invalid entry"
 
-###########  
-# Test code
-###########
+#############
+# Test code #
+#############
 
+"""
 import matplotlib.pyplot as plt
 import all_roads_to_roam
 import sandbox
@@ -102,7 +103,6 @@ car = Car([i, j], "East", 3, 2)
 
 # Update function for animation
 def update(frame):
-    global car
 
     # Create a copy of the grid for drawing
     grid_copy = grid.copy()
@@ -137,3 +137,61 @@ from matplotlib.animation import FuncAnimation
 ani = FuncAnimation(fig, update, frames=100, interval=200, repeat=False)
 
 plt.show()  # Show the final plot when the loop ends
+
+"""
+
+################
+# Test Code v2 #
+################
+
+import all_roads_to_roam
+import sandbox
+import time
+from sandbox import Sandbox
+from serializer import SandboxSerializer
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import os
+
+sb = SandboxSerializer.load_sandbox('circle_data.json',Sandbox)
+grid = np.array(sb.path_map)
+
+def findOne(grid):
+    for i in range(grid.shape[0]):
+        for j in range(grid.shape[1]):
+            if grid[i, j] == 1:
+                return i, j
+
+
+i, j = findOne(grid)
+car = Car([i, j], "Southeast", 3, 2)
+
+def updateGrid(grid, car: Car):
+
+    car.pos, car.dir = car.percieve(grid, car.pos, car.dir, iter=0)
+
+    currentGrid = grid
+    currentGrid[car.pos[0], car.pos[1]] = 2
+
+    for dx in range(-3, 4):
+        for dy in range(-3, 4):
+            x = car.pos[1] + dx
+            y = car.pos[0] + dy
+
+            currentGrid[x, y] = 2
+
+    return currentGrid
+
+def saveGrid(grid, path):
+    
+    cmap = ListedColormap(['white', 'black', 'red'])
+    plt.imshow(grid, cmap=cmap, interpolation='none')
+    #plt.axis('off')
+    plt.savefig(path, bbox_inches='tight', pad_inches=0)
+    plt.close
+
+for i in range(10):
+    currentGrid = updateGrid(grid, car)
+    print(car.pos)
+    path = os.path.join('car_images', f'grid_image{i}.png')
+    saveGrid(currentGrid, path)
