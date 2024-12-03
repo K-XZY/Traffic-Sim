@@ -175,6 +175,6 @@ def load_and_visualize():
 
 if __name__ == "__main__":
     # To generate and save new data, uncomment the next line:
-    generate_and_save_circle()
+    generate_and_save_butterfly()
     #generate_and_save_turns()
     
