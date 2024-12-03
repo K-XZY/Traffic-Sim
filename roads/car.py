@@ -9,9 +9,11 @@ class Car():
         self.dir = initial_dir
         self.maxVel = maxVel
         self.maxAcc = maxAcc
-        self.prevVel = 0.0
         self.velocity = maxVel
         self.stuckCtr = 0
+        self.decisionState = "Free Driving"
+        self.nearbyCar = False
+        self.inactivityCtr = 0.0
 
         self.directions = {
             "North": [[-1, 1], [0, 1], [1, 1]],
@@ -24,10 +26,66 @@ class Car():
             "Northwest": [[-1, 0], [-1, 1], [0, 1]],
         }
 
-        self.inactivityCtr = 0.0
+    # Function to determine velocity based on decision state
+    def setVelocity(self):
+
+        accCoef = 1
+
+        # If there are no cars impacting behaviour
+        if self.decisionState == "Free Driving":
+
+            acc = random.randint(int(self.maxAcc * -accCoef), int(self.maxAcc * accCoef))
+            if ((self.velocity+acc) == self.maxVel):
+                velocity = self.maxVel
+            elif((self.velocity+acc) <= 1):
+                velocity = 2
+            else:
+                velocity = self.velocity + acc
+            self.velocity = np.random.randint(1, velocity)
+        
+        # If there is a car in front 
+        elif self.decisionState == "Approaching":
+
+            acc = random.randint(int(self.maxAcc * accCoef), 0)
+            if ((self.velocity+acc) == 0):
+                velocity = 0.1
+            else:
+                velocity = self.velocity + acc
+            self.velocity = np.random.randint(0, velocity)
+
+        """
+        elif self.decisionState == "Following":
+            return self.position
+        elif self.decisionState == "Breaking":
+            return self.position
+        """
+        
+    # Function to check for nearby cars
+    def checkNearby(self, cars, minDist):
+
+        if len(cars) == 1:
+            self.nearbyCar = False
+            return self.nearbyCar
+        
+        for car in cars:
+            if car is not self:
+                dist = self.distanceTo(car)
+                if dist < minDist:
+                    self.nearbyCar = True
+                    return self.nearbyCar
+        self.nearbyCar = False
+        return self.nearbyCar
+
+    # Function to check proximity to other cars
+    def distanceTo(self, otherCar):
+        x1, y1 = self.pos
+        x2, y2 = otherCar.pos
+        return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
     # Function to determine path
     def percieve(self, map, position, direction, iter=0):
+
+        self.setVelocity()
 
         if(iter == self.velocity):
             return position, direction
@@ -81,7 +139,7 @@ import time
 from sandbox import Sandbox
 from serializer import SandboxSerializer
 
-sb = SandboxSerializer.load_sandbox('circle_data.json',Sandbox)
+sb = SandboxSerializer.load_sandbox('circle_data2.json',Sandbox)
 grid = np.array(sb.path_map)
 
 # Create the figure and axis
@@ -94,7 +152,7 @@ i = 0
 j = 0
 current = 0
 rows, cols = grid.shape
-for i in range(rows):
+for i in range(rows): 
     for j in range(cols):
         current = grid[i, j]
         if current != 0:
@@ -155,8 +213,11 @@ from matplotlib.colors import ListedColormap
 import os
 from PIL import Image
 
-sb = SandboxSerializer.load_sandbox('circle_data.json',Sandbox)
+sb = SandboxSerializer.load_sandbox('circle_data2.json',Sandbox)
+paths = sb.paths
+paths = [point for path in paths for point in path]
 grid = np.array(sb.path_map)
+cars = []
 
 def findOne(grid):
     for i in range(grid.shape[0]):
@@ -166,53 +227,70 @@ def findOne(grid):
 
 
 i, j = findOne(grid)
+
 car = Car([i, j], "Southeast", 5, 2)
+cars.append(car)
 
-def updateGrid(grid, car: Car, stuckThreshold):
+for i in range(9):
+    point = random.choice(paths)
+    cars.append(Car([int(point.x), int(point.y)], 
+                    random.choice(list(car.directions.keys())),
+                    5, 
+                    2))
 
-    prevPos = car.pos
-
-    pos, dir = car.percieve(grid, car.pos, car.dir, iter=0)
-    car.pos = pos
-    car.dir = dir
-
-    if prevPos == car.pos:
-        car.stuckCtr += 1
-    else:
-        car.stuckCtr = 0
-
-    if car.stuckCtr >= stuckThreshold:
-        car.dir = random.choice(list(car.directions.keys()))
-        car.stuckCtr = 0
+def updateGrid(grid, stuckThreshold, cars):
 
     currentGrid = grid.copy()
-    currentGrid[car.pos[0], car.pos[1]] = 2
 
-    for dx in range(-10, 11):
-        for dy in range(-10, 11):
-            x = car.pos[1] + dx
-            y = car.pos[0] + dy
+    for car in cars:
+        prevPos = car.pos
 
-            #if 0 <= x < grid.shape[1] and 0 <= y < grid.shape[0]:
-            currentGrid[y, x] = 2
+        nearbyCar = car.checkNearby(cars, 10)
+        if(nearbyCar):
+            car.decisionState = "Approaching"
+        else:
+            car.decisionState = "Free Driving"
 
-    return currentGrid
+        pos, dir = car.percieve(grid, car.pos, car.dir, iter=0)
+        car.pos = pos
+        car.dir = dir
+
+        if prevPos == car.pos:
+            car.stuckCtr += 1
+        else:
+            car.stuckCtr = 0
+
+        if car.stuckCtr >= stuckThreshold:
+            car.dir = random.choice(list(car.directions.keys()))
+            car.stuckCtr = 0
+
+        currentGrid[car.pos[0], car.pos[1]] = 2
+
+        for dx in range(-10, 11):
+            for dy in range(-10, 11):
+                x = car.pos[1] + dx
+                y = car.pos[0] + dy
+
+                currentGrid[y, x] = 2
+
+    return currentGrid, cars
 
 def saveGrid(grid, path):
     
-    cmap = ListedColormap(['white', 'black', 'red'])
-    plt.imshow(grid, cmap=cmap, interpolation='none')
+    # cmap = ListedColormap(['white', 'black', 'red'])
+    plt.figure(figsize=(5 ,5))
+    plt.imshow(grid, cmap='hot', interpolation='none')
     plt.axis('off')
-    plt.savefig(path, bbox_inches='tight', pad_inches=0)
+    plt.savefig(path, bbox_inches='tight', pad_inches=0, dpi=100)
     plt.close()
 
-currentGrid = updateGrid(grid, car, stuckThreshold=3)
+currentGrid, cars = updateGrid(grid, 3, cars)
 
 imageFolder = 'car_images'
 imageFiles = []
 
-for i in range(100):
-    currentGrid = updateGrid(grid, car, stuckThreshold=3)
+for i in range(200):
+    currentGrid, cars = updateGrid(grid, 3, cars)
     print(car.pos)
     path = os.path.join('car_images', f'grid_image{i}.png')
     saveGrid(currentGrid, path)
