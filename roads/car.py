@@ -14,6 +14,7 @@ class Car():
         self.decisionState = "Free Driving"
         self.nearbyCar = False
         self.inactivityCtr = 0.0
+        self.maxIter = 100
 
         self.directions = {
             "North": [[-1, 1], [0, 1], [1, 1]],
@@ -34,7 +35,13 @@ class Car():
         # If there are no cars impacting behaviour
         if self.decisionState == "Free Driving":
 
-            acc = random.randint(int(self.maxAcc * -accCoef), int(self.maxAcc * accCoef))
+            low = int(self.maxAcc * -accCoef)
+            high = int(self.maxAcc * accCoef)
+
+            if high < low:
+                high, low = low, high
+
+            acc = random.randint(low, high)
             if ((self.velocity+acc) == self.maxVel):
                 velocity = self.maxVel
             elif((self.velocity+acc) <= 1):
@@ -46,7 +53,13 @@ class Car():
         # If there is a car in front 
         elif self.decisionState == "Approaching":
 
-            acc = random.randint(int(self.maxAcc * accCoef), 0)
+            low = int(self.maxAcc * -accCoef)
+            high = 0
+
+            if high < low:
+                high, low = low, high
+
+            acc = random.randint(low, high)
             if ((self.velocity+acc) == 0):
                 velocity = 0.1
             else:
@@ -86,6 +99,9 @@ class Car():
     def percieve(self, map, position, direction, iter=0):
 
         self.setVelocity()
+
+        if iter >= self.maxIter:
+            return position, direction
 
         if(iter == self.velocity):
             return position, direction
@@ -289,7 +305,7 @@ currentGrid, cars = updateGrid(grid, 3, cars)
 imageFolder = 'car_images'
 imageFiles = []
 
-for i in range(200):
+for i in range(20):
     currentGrid, cars = updateGrid(grid, 3, cars)
     print(car.pos)
     path = os.path.join('car_images', f'grid_image{i}.png')
