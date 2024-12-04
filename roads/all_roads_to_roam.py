@@ -19,10 +19,10 @@ def generate_and_save_circle():
     # Create a network
     network = Network()
     # Create nodes in a square pattern
-    network.add_node(1, 800, 800)   # Bottom-left
-    network.add_node(2, 800, 1200)  # Top-left
-    network.add_node(3, 1200, 1200) # Top-right
-    network.add_node(4, 1200, 800)  # Bottom-right
+    network.add_node(1, 400, 400)   # Bottom-left
+    network.add_node(2, 400, 1600)  # Top-left
+    network.add_node(3, 1600, 1600) # Top-right
+    network.add_node(4, 1600, 400)  # Bottom-right
     
     # Connect nodes in a circle
     network.add_edge(1, 1, 2)
@@ -35,7 +35,7 @@ def generate_and_save_circle():
     sandbox = Sandbox(2000, 2000, alpha=0.3, beta=0.2)
     
     # Add an energy zone at the center
-    sandbox.create_energy_zone(1000, 1000, 1000, 800)
+    sandbox.create_energy_zone(1000, 1000, 2000, 1800)
     
     # Add network and generate paths
     sandbox.add_network(network)
@@ -175,6 +175,7 @@ def load_and_visualize():
 
 if __name__ == "__main__":
     # To generate and save new data, uncomment the next line:
-    generate_and_save_butterfly()
+    # generate_and_save_butterfly()
     #generate_and_save_turns()
+    generate_and_save_circle()
     

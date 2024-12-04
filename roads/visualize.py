@@ -128,3 +128,28 @@ def edge_coloring(G):
         u, v = edge
         color_map[(u, v)] = 'black' #colormap.colors[color_idx]
     return color_map
+
+
+def visualize_car_speed(cars: list):
+    plt.figure(figsize=(15, 8))
+    plt.title("Car Speeds")
+    plt.xlabel('time')
+    plt.ylabel('speed')
+    for car in cars:
+        plt.plot(car.list_velocity, '.', alpha=0.3)
+
+    # plot the average car speed per second 
+    average_speed = [np.mean([car.list_velocity[i] for car in cars]) for i in range(len(cars[0].list_velocity))]
+
+    plt.plot(average_speed, color='black', label='average speed')
+
+    # plot the maximum speed every second and minimum speed at each second among all cars
+    max_speed = [max([car.list_velocity[i] for car in cars]) for i in range(len(cars[0].list_velocity))]
+    min_speed = [min([car.list_velocity[i] for car in cars]) for i in range(len(cars[0].list_velocity))]
+    plt.plot(max_speed, color='red', label='max speed')
+    plt.plot(min_speed, color='blue', label='min speed')
+
+    plt.legend()
+    plt.show()
+
+

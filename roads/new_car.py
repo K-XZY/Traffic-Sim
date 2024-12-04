@@ -11,6 +11,7 @@ from serializer import SandboxSerializer
 from math import atan2, degrees  # Add these imports
 import scipy
 import cv2
+from visualize import visualize_car_speed
 
 @dataclass
 class Position:
@@ -21,6 +22,15 @@ class Position:
     def to_tuple(self) -> Tuple[int, int]:
         return (self.x, self.y)
 
+@dataclass
+class Point:
+    """Represents a 2D point with x, y coordinates."""
+    x: float
+    y: float
+
+    def to_tuple(self) -> Tuple[int, int]:
+        """Convert point to integer tuple coordinates."""
+        return (int(round(self.x)), int(round(self.y)))
 
 class Car:
     """Represents a car in the simulation with movement and decision-making capabilities."""
@@ -36,7 +46,8 @@ class Car:
         self.decision_state = "Free Driving"
         self.nearby_car = False
         self.inactivity_counter = 0.0
-        self.detection_radius = 50  # Radius to look for other cars
+        self.detection_radius = 100  # Radius to look for other cars
+        self.list_velocity = [self.velocity]
 
         # Define possible movement directions with angles
         self.directions = {
@@ -62,56 +73,18 @@ class Car:
             "Northwest": 135
         }
 
-    def get_cars_in_front(self, cars: List['Car']) -> List['Car']:
-        """Identify cars that are in front of the current car within detection radius."""
-        cars_in_front = []
-        current_angle = self.direction_angles[self.dir]
-        
-        for other_car in cars:
-            if other_car is self:
-                continue
-                
-            # Calculate relative position
-            dx = other_car.pos.x - self.pos.x
-            dy = other_car.pos.y - self.pos.y
-            distance = np.sqrt(dx**2 + dy**2)
-            
-            if distance > self.detection_radius:
-                continue
-                
-            # Calculate angle to other car
-            angle_to_car = degrees(atan2(dy, dx)) % 360
-            
-            # Calculate angle difference
-            angle_diff = (angle_to_car - current_angle) % 360
-            
-            # Consider cars within a 120-degree cone in front
-            if angle_diff < 60 or angle_diff > 300:
-                cars_in_front.append(other_car)
-        
-        return cars_in_front
-
-    def get_majority_direction(self, cars_in_front: List['Car']) -> str:
-        """Determine the most common direction among cars in front."""
-        if not cars_in_front:
-            return self.dir
-            
-        direction_counts = {}
-        for car in cars_in_front:
-            direction_counts[car.dir] = direction_counts.get(car.dir, 0) + 1
-            
-        # If there are directions to choose from, pick the most common
-        if direction_counts:
-            return max(direction_counts.items(), key=lambda x: x[1])[0]
-            
-        return self.dir
+    def store_velocity(self) -> list:
+        """Store the velocity of the car."""
+        self.list_velocity.append(self.velocity)
+        return self.list_velocity
 
     def set_velocity(self) -> None:
         """Determine velocity based on current decision state."""
         acc_coef = 1
 
         if self.decision_state == "Free Driving":
-            acc = random.randint(-self.max_acc, self.max_acc)
+            # acc = random.randint(-self.max_acc, self.max_acc)
+            acc = random.randint(0,self.max_acc)
             if (self.velocity + acc) >= self.max_vel:
                 velocity = self.max_vel
             elif (self.velocity + acc) <= 1:
@@ -122,21 +95,43 @@ class Car:
         
         elif self.decision_state == "Approaching":
             acc = random.randint(-self.max_acc, 0)
-            velocity = max(1, self.velocity + acc)
-            self.velocity = max(1, min(velocity, self.max_vel))
+            velocity = max(0, self.velocity + acc)
+            self.velocity = max(0, min(velocity, self.max_vel))
 
     def check_nearby(self, cars: List['Car'], min_dist: float) -> bool:
-        """Check for nearby cars within a minimum distance."""
+        """
+        Check for nearby cars within minimum distance and in the direction of travel.
+        Uses the same directional logic as get_cars_in_front() but with distance threshold.
+        """
         if len(cars) == 1:
             self.nearby_car = False
             return False
+
+        current_angle = self.direction_angles[self.dir]
         
         for car in cars:
-            if car is not self:
-                dist = self.distance_to(car)
-                if dist < min_dist:
-                    self.nearby_car = True
-                    return True
+            if car is self:
+                continue
+                
+            # Calculate relative position
+            dx = car.pos.x - self.pos.x
+            dy = car.pos.y - self.pos.y
+            distance = np.sqrt(dx**2 + dy**2)
+            
+            if distance > min_dist:
+                continue
+                
+            # Calculate angle to other car
+            angle_to_car = degrees(atan2(dy, dx)) % 360
+            
+            # Calculate angle difference
+            angle_diff = (angle_to_car - current_angle) % 360
+            
+            # Consider cars within a 120-degree cone in front and within min_dist
+            if angle_diff < 60 or angle_diff > 300:
+                self.nearby_car = True
+                return True
+
         self.nearby_car = False
         return False
 
@@ -151,17 +146,10 @@ class Car:
         self.set_velocity()
         current_pos = position
         
-        # Get cars in front and their majority direction
-        cars_in_front = self.get_cars_in_front(all_cars)
-        majority_dir = self.get_majority_direction(cars_in_front)
-        
-        # Update direction based on majority
-        if cars_in_front:
-            current_dir = majority_dir
-        else:
-            current_dir = direction
+        current_dir = direction
         
         # Iterate based on velocity
+        blocked = False
         for _ in range(self.velocity):
             # Get possible next positions
             perceived_points = [
@@ -175,7 +163,18 @@ class Car:
                 if 0 <= p[1] < grid.shape[0] and 
                    0 <= p[0] < grid.shape[1] and 
                    grid[p[1]][p[0]] == 1
-            ]
+            ] # select road
+
+            for p in valid_points:
+                # look if any other cars if there
+                for car in all_cars:
+                    if car.pos.x == p[0] and car.pos.y == p[1]:
+                        blocked = True
+        
+            if blocked:
+                break
+
+
             
             # If no valid points, stay in current position
             if not valid_points:
@@ -216,17 +215,17 @@ class Car:
 class Simulation:
     """Manages the car simulation and visualization."""
     
-    def __init__(self, grid: np.ndarray, num_cars: int = 10):
-        """Initialize simulation with grid and number of cars."""
+    def __init__(self, grid: np.ndarray, network_edges: List[Tuple[Point, Point]], num_cars: int = 10):
         self.grid = grid
-        # Generate unique colors for each car
+        self.network_edges = network_edges
         self.car_colors = self._generate_car_colors(num_cars)
         self.cars = self._initialize_cars(num_cars)
         self.image_folder = 'car_images'
         os.makedirs(self.image_folder, exist_ok=True)
-        
-        # Create thickened path map for visualization
         self.visualization_grid = self._create_thick_path_map(grid)
+
+    def get_cars(self) -> List[Car]:
+        return self.cars
 
     def _create_thick_path_map(self, grid: np.ndarray) -> np.ndarray:
         """Create a thickened version of the path map for visualization."""
@@ -254,24 +253,217 @@ class Simulation:
             colors.append(rgb)
         return colors
 
+
+
+    def _point_to_line_distance(self, point: Position, start: Point, end: Point) -> float:
+        """Calculate the distance from a point to a line segment."""
+        # Convert Point to numpy arrays for vector operations
+        p = np.array([point.x, point.y])
+        a = np.array([start.x, start.y])
+        b = np.array([end.x, end.y])
+        
+        # Calculate the line segment vector
+        line_vec = b - a
+        line_length = np.linalg.norm(line_vec)
+        if line_length == 0:
+            return np.linalg.norm(p - a)
+        
+        # Calculate relative position of projection
+        t = max(0, min(1, np.dot(p - a, line_vec) / (line_length * line_length)))
+        
+        # Calculate closest point on line segment
+        projection = a + t * line_vec
+        
+        # Return distance to closest point
+        return np.linalg.norm(p - projection)
+
+    def _find_closest_edge(self, pos: Position) -> Tuple[Point, Point]:
+        """Find the closest network edge to a given position."""
+        min_distance = float('inf')
+        closest_edge = None
+        
+        for start, end in self.network_edges:  # network_edges from Sandbox
+            distance = self._point_to_line_distance(pos, start, end)
+            if distance < min_distance:
+                min_distance = distance
+                closest_edge = (start, end)
+        
+        return closest_edge
+
+    def _get_direction_from_edge(self, start: Point, end: Point) -> str:
+        """Get the direction based on edge orientation using cosine similarity."""
+        # Calculate edge direction vector
+        dx = end.x - start.x
+        dy = end.y - start.y
+        edge_vector = np.array([dx, dy])
+        edge_vector = edge_vector / np.linalg.norm(edge_vector)
+        
+        # Standard directions with normalized vectors
+        directions = {
+            "North": np.array([0, 1]),
+            "Northeast": np.array([1, 1]) / np.sqrt(2),
+            "East": np.array([1, 0]),
+            "Southeast": np.array([1, -1]) / np.sqrt(2),
+            "South": np.array([0, -1]),
+            "Southwest": np.array([-1, -1]) / np.sqrt(2),
+            "West": np.array([-1, 0]),
+            "Northwest": np.array([-1, 1]) / np.sqrt(2)
+        }
+        
+        # Calculate cosine similarity with each direction
+        similarities = {
+            dir_name: np.dot(edge_vector, dir_vec)
+            for dir_name, dir_vec in directions.items()
+        }
+        
+        # Return direction with highest similarity
+        return max(similarities.items(), key=lambda x: x[1])[0]
+
     def _initialize_cars(self, num_cars: int) -> List[Car]:
-        """Initialize cars at random valid positions on the grid."""
+        """Initialize cars on network edges with appropriate directions."""
         cars = []
         valid_positions = np.where(self.grid == 1)
         positions = list(zip(valid_positions[1], valid_positions[0]))  # x, y coordinates
         
         for i in range(num_cars):
+            # Get random position on road
             x, y = random.choice(positions)
-            direction = random.choice(list(Car(Position(0, 0), "", 0, 0).directions.keys()))
-            car = Car(Position(x, y), direction, 5, 2)
-            # Store the car's color index
+            pos = Position(x, y)
+            
+            # Find closest edge and its direction
+            start, end = self._find_closest_edge(pos)
+            direction = self._get_direction_from_edge(start, end)
+            
+            # Create car with determined direction
+            speed_max = random.randint(5, 30)
+            acc_max = random.randint(int(0.1*speed_max)+1, int(0.5*speed_max))
+            car = Car(pos, direction, speed_max, acc_max)
             car.color_idx = i
             cars.append(car)
-            
+        
+        # special_car = Car(pos, direction, 3,1)
+        # cars.append(special_car)
         return cars
 
+    def check_blocking_info(self, car: Car, new_pos: Position) -> Tuple[bool, Optional[Position]]:
+        """
+        Check if there's any car blocking the path to the new position using actual road coordinates.
+        
+        Args:
+            car: The car being checked
+            new_pos: The intended new position
+        
+        Returns:
+            Tuple[bool, Optional[Position]]: 
+                - Boolean indicating if path is blocked
+                - Position right after blocking car (if blocked), None otherwise
+        """
+        # 1. Get current edge
+        start, end = self._find_closest_edge(car.pos)
+        
+        # 2. Find the road coordinates between current and new position
+        # First, find the path that contains these points
+        matching_path = None
+        for path in self.network_edges:
+            if (self._point_to_line_distance(car.pos, path[0], path[1]) < 5 and 
+                self._point_to_line_distance(new_pos, path[0], path[1]) < 5):
+                matching_path = path
+                break
+        
+        if not matching_path:
+            return False, None  # No valid path found
+            
+        # Generate path points using road coordinates
+        points_to_check = self._generate_path_points(car.pos, new_pos, matching_path)
+        
+        # 3. Check for cars on these points
+        blocking_car = None
+        blocking_point_idx = None
+        
+        for i, point in enumerate(points_to_check):
+            for other_car in self.cars:
+                if other_car is car:  # Skip self
+                    continue
+                    
+                # Check if other car is on same path segment
+                if self._point_to_line_distance(other_car.pos, start, end) <= 5:
+                    dist = np.sqrt((point.x - other_car.pos.x)**2 + 
+                                 (point.y - other_car.pos.y)**2)
+                    if dist < 10:  # Car width/length threshold
+                        blocking_car = other_car
+                        blocking_point_idx = i
+                        break
+            
+            if blocking_car:
+                break
+        
+        # 4 & 5. Return blocking status and safe position
+        if blocking_car:
+            # If blocked, return the last safe position (point before blocking car)
+            if blocking_point_idx > 0:
+                safe_pos = points_to_check[blocking_point_idx - 1]
+            else:
+                safe_pos = car.pos  # Stay in current position if blocked immediately
+            return True, safe_pos
+        
+        return False, None
+
+    def _generate_path_points(self, start_pos: Position, end_pos: Position, 
+                             path: Tuple[Point, Point]) -> List[Position]:
+        """
+        Generate a list of points along the actual road path between start and end positions.
+        
+        Args:
+            start_pos: Starting position
+            end_pos: Ending position
+            path: Tuple of start and end Points defining the road segment
+        
+        Returns:
+            List[Position]: List of positions along the road
+        """
+        path_start, path_end = path
+        
+        # Project points onto path line segment
+        def project_point_to_line(point: Position, line_start: Point, line_end: Point) -> Position:
+            p = np.array([point.x, point.y])
+            a = np.array([line_start.x, line_start.y])
+            b = np.array([line_end.x, line_end.y])
+            
+            # Get vector from a to b
+            ab = b - a
+            # Get vector from a to p
+            ap = p - a
+            
+            # Calculate the projection
+            t = np.dot(ap, ab) / np.dot(ab, ab)
+            t = max(0, min(1, t))  # Clamp to [0,1]
+            
+            projected = a + t * ab
+            return Position(int(projected[0]), int(projected[1]))
+        
+        # Project start and end positions onto path
+        proj_start = project_point_to_line(start_pos, path_start, path_end)
+        proj_end = project_point_to_line(end_pos, path_start, path_end)
+        
+        # Get direction vector
+        dx = proj_end.x - proj_start.x
+        dy = proj_end.y - proj_start.y
+        distance = np.sqrt(dx**2 + dy**2)
+        
+        # Create points along the path
+        num_points = max(10, int(distance / 5))  # One point every 5 pixels, minimum 10 points
+        points = []
+        
+        for i in range(num_points):
+            t = i / (num_points - 1)
+            x = proj_start.x + t * dx
+            y = proj_start.y + t * dy
+            points.append(Position(int(x), int(y)))
+        
+        return points
+
     def update_grid(self, stuck_threshold: int = 3) -> np.ndarray:
-        """Update simulation state for one time step."""
+        """Update simulation state for one time step with collision prevention."""
         # Initialize grid with -1 for background
         current_grid = np.full_like(self.grid, -1, dtype=float)
         
@@ -281,36 +473,52 @@ class Simulation:
         for car_idx, car in enumerate(self.cars):
             prev_pos = car.pos
 
+            # Check for nearby cars and update decision state
             nearby_car = car.check_nearby(self.cars, 10)
             car.decision_state = "Approaching" if nearby_car else "Free Driving"
 
-            # Pass the list of all cars to perceive
-            pos, direction = car.perceive(self.grid, car.pos, car.dir, self.cars)
-            car.pos = pos
-            car.dir = direction
+            # Find the road edge the car is on and get its direction
+            start, end = self._find_closest_edge(car.pos)
+            edge_direction = self._get_direction_from_edge(start, end)
+            
+            # Enforce edge direction before movement
+            if car.dir != edge_direction:
+                car.dir = edge_direction
 
+            # First, get the proposed new position from car's perception
+            proposed_pos, proposed_direction = car.perceive(self.grid, car.pos, car.dir, self.cars)
+            
+            if proposed_direction == edge_direction:
+                car.pos = proposed_pos
+                car.dir = proposed_direction
+            else:
+                car.dir = edge_direction
+                car.pos = proposed_pos
+            # Reset stuck counter as car moved successfully
+            car.stuck_counter = 0
+
+            # Update stuck status
             if prev_pos.to_tuple() == car.pos.to_tuple():
                 car.stuck_counter += 1
             else:
                 car.stuck_counter = 0
 
+            # Handle persistent stuck situations
             if car.stuck_counter >= stuck_threshold:
-                car.dir = random.choice(list(car.directions.keys()))
-                car.stuck_counter = 0
+                car.stuck_counter = 0  # Reset counter but maintain direction
+                # Could add additional stuck handling here if needed
 
-            # Create a 7x7 square for each car
+            # Visualize car on grid (create a 7x7 square for each car)
             y, x = car.pos.y, car.pos.x
-            
-            # Define the range for the 7x7 square
-            for dy in range(-3, 4):
-                for dx in range(-3, 4):
+            for dy in range(-7, 8):
+                for dx in range(-7, 8):
                     new_y, new_x = y + dy, x + dx
-                    
-                    # Check boundaries
                     if (0 <= new_y < current_grid.shape[0] and 
                         0 <= new_x < current_grid.shape[1]):
-                        # Set car color index for this pixel
                         current_grid[new_y, new_x] = car_idx
+
+            # Store car velocity for tracking
+            car.store_velocity()
 
         return current_grid
 
@@ -380,7 +588,7 @@ class Simulation:
         
         return path
 
-    def save_as_gif(self, num_frames: int) -> str:
+    def save_as_gif(self, num_frames: int, name = 'sim') -> str:
         """Save simulation as GIF for shorter sequences."""
         image_files = []
         
@@ -392,7 +600,7 @@ class Simulation:
             
         # Create GIF
         images = [Image.open(image) for image in image_files]
-        gif_path = os.path.join(self.image_folder, 'simulation.gif')
+        gif_path = os.path.join(self.image_folder, f'{name}.gif')
         
         images[0].save(
             gif_path,
@@ -437,21 +645,24 @@ class Simulation:
 
     def save_simulation(self, num_frames: int = 200, name='simulation') -> str:
         """Save simulation as either GIF or MP4 based on number of frames."""
-        if num_frames <= 50:
-            return self.save_as_gif(num_frames)
+        if num_frames < 10:
+            return self.save_as_gif(num_frames, name)
         else:
             return self.save_as_video(num_frames, name)
 
+
 def main():
-    """Main function to run the simulation."""
     # Load sandbox data
     sb = SandboxSerializer.load_sandbox('circle_data2.json', Sandbox)
     grid = np.array(sb.path_map)
     
-    # Create and run simulation
-    sim = Simulation(grid, num_cars=400)
-    output_path = sim.save_simulation(num_frames=1000, name = 'sim3')
+    # Create and run simulation with network edges
+    sim = Simulation(grid, sb.network_edges, num_cars=300)
+    output_path = sim.save_simulation(num_frames=100, name='sim_new_7_not_all_same')
     print(f"Simulation completed. Animation saved to: {output_path}")
+
+    cars = sim.get_cars()
+    visualize_car_speed(cars)
 
 if __name__ == "__main__":
     main()
