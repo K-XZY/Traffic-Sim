@@ -83,7 +83,8 @@ def generate_and_save_turns():
     # Add an energy zone at the center
     sandbox.create_energy_zone(1300, 1300, 2000, 300)
     sandbox.create_energy_zone(800, 800, 2000, 500)
-    
+    sandbox.create_energy_zone(800, 1300, 2000, 400)
+    sandbox.create_energy_zone(1300, 800, 2000, 400)
     # Add network and generate paths
     sandbox.add_network(network)
     sandbox.visualize_energy()
@@ -173,9 +174,62 @@ def load_and_visualize():
     # Show the 3D energy visualization
     logger.info("Showing energy visualization...")
 
+def generate_and_save_network():
+    """Generate network and sandbox, then save to file."""
+    logger.info("Generating network and sandbox...")
+    
+    # Create a network
+    network = Network()
+    # Create nodes in a square pattern
+    # create a grid from 400, 1200, 1600 
+    for i in range(3):
+        for j in range(3):
+            network.add_node(i*3+j+1,i*400+400, j*400+400)
+
+    # connect them 
+    network.add_edge(1, 1,2)
+    network.add_edge(2, 2,3)
+    network.add_edge(3, 3,6)
+    network.add_edge(4, 5,2)
+    network.add_edge(5, 4,1)
+    network.add_edge(6, 4,5)
+    network.add_edge(7, 5,6)
+    network.add_edge(8, 7,4)
+    network.add_edge(9, 5,8)
+    network.add_edge(10, 6,9)
+    network.add_edge(11, 9,8)
+    network.add_edge(12, 8,7)
+    # Create sandbox and energy bump
+    sandbox = Sandbox(2000, 2000, alpha=0.3, beta=0.2)
+
+    
+    # Add an energy zone at the center
+    sandbox.create_energy_zone(1000,1000, 1000, 800)
+    
+    # Add network and generate paths
+    sandbox.add_network(network)
+    sandbox.visualize_energy()
+    # Generate path_map
+    sandbox.update_path_map()
+    
+    # Plot the path map
+    logger.info("Plotting path map...")
+    plt.figure(figsize=(10, 8))
+    plt.imshow(sandbox.path_map.T, origin='lower', cmap='hot')
+    plt.colorbar(label='Road Presence')
+    plt.title('Road Path Map')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.show()
+    # Save the sandbox
+    logger.info("Saving sandbox to file...")
+    SandboxSerializer.save_sandbox(sandbox, "turns_data.json")
+    logger.info("Save completed!")
+
 if __name__ == "__main__":
     # To generate and save new data, uncomment the next line:
-    # generate_and_save_butterfly()
-    #generate_and_save_turns()
-    generate_and_save_circle()
+    generate_and_save_butterfly()
+    # generate_and_save_turns()
+    # generate_and_save_circle()
+    # generate_and_save_network()
     

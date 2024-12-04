@@ -178,7 +178,9 @@ class Car:
             
             # If no valid points, stay in current position
             if not valid_points:
-                break
+                # try a new direction 
+                new_dir = random.choice(list(self.directions.keys()))
+                continue
             
             # Choose next position
             chosen_point = random.choice(valid_points)
@@ -492,8 +494,13 @@ class Simulation:
                 car.pos = proposed_pos
                 car.dir = proposed_direction
             else:
-                car.dir = edge_direction
-                car.pos = proposed_pos
+                # with a probability, well calibrate diections
+                if random.randint(0,10)>=5:
+                    car.dir = edge_direction
+                    car.pos = proposed_pos
+                else:
+                    car.pos = proposed_pos
+                    car.dir = proposed_direction
             # Reset stuck counter as car moved successfully
             car.stuck_counter = 0
 
@@ -653,12 +660,12 @@ class Simulation:
 
 def main():
     # Load sandbox data
-    sb = SandboxSerializer.load_sandbox('circle_data2.json', Sandbox)
+    sb = SandboxSerializer.load_sandbox('./butterfly_data.json', Sandbox)
     grid = np.array(sb.path_map)
     
     # Create and run simulation with network edges
     sim = Simulation(grid, sb.network_edges, num_cars=300)
-    output_path = sim.save_simulation(num_frames=100, name='sim_new_7_not_all_same')
+    output_path = sim.save_simulation(num_frames=30, name='sim_new_curved_1_not_all_same')
     print(f"Simulation completed. Animation saved to: {output_path}")
 
     cars = sim.get_cars()
